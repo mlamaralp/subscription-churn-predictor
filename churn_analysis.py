@@ -120,3 +120,33 @@ plt.tight_layout()
 plt.savefig('images/eda_distributions.png', bbox_inches='tight')
 plt.show()
 print("Saved: images/eda_distributions.png")
+
+service_cols = ['OnlineSecurity', 'OnlineBackup', 'DeviceProtection',
+                'TechSupport', 'StreamingTV', 'StreamingMovies', 'MultipleLines']
+df['_num_services_preview'] = df[service_cols].apply(
+    lambda row: sum(1 for v in row if v == 'Yes'), axis=1
+)
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+svc_churn = df.groupby('_num_services_preview')['Churn_binary'].mean().mul(100)
+axes[0].bar(svc_churn.index, svc_churn.values, color='#4c72b0', width=0.6)
+axes[0].set_title('Churn Rate by Number of Services', fontweight='bold')
+axes[0].set_xlabel('Number of Add-on Services')
+axes[0].set_ylabel('Churn Rate (%)')
+for i, v in enumerate(svc_churn.values):
+    axes[0].text(i, v + 0.5, f'{v:.1f}%', ha='center', fontsize=9)
+
+numeric_cols = ['tenure', 'MonthlyCharges', 'TotalCharges', 'Churn_binary']
+corr = df[numeric_cols].corr()
+sns.heatmap(corr, annot=True, fmt='.2f', cmap='RdYlGn',
+            center=0, ax=axes[1], linewidths=0.5,
+            annot_kws={'size': 11})
+axes[1].set_title('Correlation Matrix : Numeric Features', fontweight='bold')
+
+plt.tight_layout()
+plt.savefig('images/eda_services_corr.png', bbox_inches='tight')
+plt.show()
+print("Saved: images/eda_services_corr.png")
+
+df = df.drop(columns=['_num_services_preview'])

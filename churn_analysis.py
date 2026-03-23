@@ -150,3 +150,46 @@ plt.show()
 print("Saved: images/eda_services_corr.png")
 
 df = df.drop(columns=['_num_services_preview'])
+
+# ── Feature engineering ────────────────────────────────────────────────────
+
+# tenure_group : bin raw tenure into lifecycle stages
+tenure_bins = [0, 12, 24, 36, 48, 72]
+tenure_labels = ['New (0-12m)', 'Developing (13-24m)', 'Established (25-36m)',
+                 'Loyal (37-48m)', 'Long-term (49-72m)']
+df['tenure_group'] = pd.cut(df['tenure'], bins=tenure_bins,
+                             labels=tenure_labels, include_lowest=True)
+
+tenure_churn = (
+    df.groupby('tenure_group', observed=True)['Churn_binary']
+    .mean()
+    .mul(100)
+    .round(1)
+)
+print("Churn rate by tenure group:")
+print(tenure_churn.to_string())
+
+# num_services : count of optional add-on services per customer
+# Hypothesis: more services = higher switching cost = lower churn propensity
+service_cols = ['OnlineSecurity', 'OnlineBackup', 'DeviceProtection',
+                'TechSupport', 'StreamingTV', 'StreamingMovies', 'MultipleLines']
+df['num_services'] = df[service_cols].apply(
+    lambda row: sum(1 for v in row if v == 'Yes'), axis=1
+)
+
+services_churn = (
+    df.groupby('num_services')['Churn_binary']
+    .mean()
+    .mul(100)
+    .round(1)
+)
+print("Churn rate by number of services:")
+print(services_churn.to_string())
+
+# monthly_to_total_ratio : share of lifetime spend represented by current monthly bill
+# High ratio = new customer with little billing history = lower inertia = higher churn risk
+df['monthly_to_total_ratio'] = df['MonthlyCharges'] / df['TotalCharges'].replace(0, np.nan)
+df['monthly_to_total_ratio'] = df['monthly_to_total_ratio'].fillna(1.0)
+
+print(f"monthly_to_total_ratio summary:")
+print(df['monthly_to_total_ratio'].describe().round(3))

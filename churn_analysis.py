@@ -193,3 +193,45 @@ df['monthly_to_total_ratio'] = df['monthly_to_total_ratio'].fillna(1.0)
 
 print(f"monthly_to_total_ratio summary:")
 print(df['monthly_to_total_ratio'].describe().round(3))
+
+# ── Encoding pipeline and train/test split ─────────────────────────────────
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+
+df_model = df.copy()
+
+binary_cols = ['gender', 'Partner', 'Dependents', 'PhoneService',
+               'PaperlessBilling', 'OnlineSecurity', 'OnlineBackup',
+               'DeviceProtection', 'TechSupport', 'StreamingTV',
+               'StreamingMovies', 'MultipleLines']
+
+le = LabelEncoder()
+for col in binary_cols:
+    df_model[col] = le.fit_transform(df_model[col].astype(str))
+
+df_model = pd.get_dummies(
+    df_model,
+    columns=['InternetService', 'Contract', 'PaymentMethod'],
+    drop_first=False
+)
+
+df_model = df_model.drop(columns=['Churn', 'tenure_group'])
+
+feature_cols = [c for c in df_model.columns if c != 'Churn_binary']
+X = df_model[feature_cols]
+y = df_model['Churn_binary']
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+print(f"Training set : {X_train.shape[0]} records")
+print(f"Test set     : {X_test.shape[0]} records")
+print(f"Churn rate in training set : {y_train.mean():.1%}")
+print(f"Churn rate in test set     : {y_test.mean():.1%}")
+
+neg = (y_train == 0).sum()
+pos = (y_train == 1).sum()
+scale_pos_weight = neg / pos
+print(f"XGBoost scale_pos_weight : {scale_pos_weight:.2f}")

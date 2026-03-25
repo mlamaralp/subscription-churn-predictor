@@ -235,3 +235,53 @@ neg = (y_train == 0).sum()
 pos = (y_train == 1).sum()
 scale_pos_weight = neg / pos
 print(f"XGBoost scale_pos_weight : {scale_pos_weight:.2f}")
+
+# ── Model 1 : Logistic Regression (Baseline) ──────────────────────────────
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (classification_report, confusion_matrix,
+                              roc_auc_score, roc_curve, f1_score,
+                              precision_score, recall_score, accuracy_score)
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+lr = LogisticRegression(max_iter=1000, class_weight='balanced', random_state=42)
+lr.fit(X_train_scaled, y_train)
+
+y_pred_lr = lr.predict(X_test_scaled)
+y_prob_lr = lr.predict_proba(X_test_scaled)[:, 1]
+
+print("Logistic Regression : Classification Report")
+print(classification_report(y_test, y_pred_lr, target_names=['Retained', 'Churned']))
+print(f"AUC-ROC : {roc_auc_score(y_test, y_prob_lr):.4f}")
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+cm_lr = confusion_matrix(y_test, y_pred_lr)
+sns.heatmap(cm_lr, annot=True, fmt='d', cmap='Blues', ax=axes[0],
+            xticklabels=['Retained', 'Churned'],
+            yticklabels=['Retained', 'Churned'],
+            annot_kws={'size': 13})
+axes[0].set_title('Logistic Regression : Confusion Matrix', fontweight='bold')
+axes[0].set_ylabel('Actual')
+axes[0].set_xlabel('Predicted')
+
+fpr_lr, tpr_lr, _ = roc_curve(y_test, y_prob_lr)
+auc_lr = roc_auc_score(y_test, y_prob_lr)
+axes[1].plot(fpr_lr, tpr_lr, color='#4c72b0', lw=2,
+             label=f'Logistic Regression (AUC = {auc_lr:.3f})')
+axes[1].plot([0, 1], [0, 1], 'k--', lw=1)
+axes[1].set_xlim([0, 1])
+axes[1].set_ylim([0, 1.02])
+axes[1].set_xlabel('False Positive Rate')
+axes[1].set_ylabel('True Positive Rate')
+axes[1].set_title('ROC Curve : Logistic Regression Baseline', fontweight='bold')
+axes[1].legend(loc='lower right')
+
+plt.tight_layout()
+plt.savefig('images/lr_results.png', bbox_inches='tight')
+plt.show()
+print("Saved: images/lr_results.png")

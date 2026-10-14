@@ -1,180 +1,127 @@
-# Subscription Churn Prediction : Revenue-Weighted Retention Prioritisation
+# Subscription Churn Predictor: Revenue-Weighted Retention Prioritisation
 
-Predicting customer churn and quantifying the expected revenue at risk for each account, using the IBM Telco Customer Churn dataset (7,043 customers, 20 features). The goal is not just to classify who will leave, but to rank customers by the financial cost of losing them : turning a binary classifier into a prioritisation tool for retention teams.
+Predicts which telecom customers are likely to churn and ranks them by **revenue at risk** (churn probability × monthly charges), so a retention team knows who to contact first, not just who is likely to leave.
 
----
+## Key results
 
-## Why This Problem
+| Model | AUC-ROC | Recall | Precision | F1 | Accuracy |
+|---|---|---|---|---|---|
+| Logistic Regression (baseline) | 0.848 | 0.802 | 0.503 | 0.618 | 0.737 |
+| XGBoost (grid search, 5-fold CV) | 0.847 | 0.799 | 0.536 | 0.642 | 0.763 |
 
-Every major technology company that operates a subscription product runs some version of this analysis. Microsoft 365, Xbox Game Pass, and Azure all depend on recurring revenue that evaporates the moment a customer cancels. Google One, YouTube Premium, and Google Workspace face the same problem. Churn prediction is not an academic exercise at these companies: it is a live system that feeds retention campaigns, pricing decisions, and product roadmaps.
+*Hold-out test set: 1,409 customers (20%), stratified split, `random_state=42`.*
 
-The standard approach : build a classifier, report accuracy, stop : does not answer the question a product or revenue team actually needs to act on: which customers should we contact first, and what is the financial cost of getting it wrong? This project adds that layer. Each customer's churn probability is multiplied by their monthly charges to produce an expected monthly revenue at risk score, which re-ranks the output of the model into a prioritised intervention list. A customer with a 60% churn probability and $100/month in charges is worth more to retain than one with an 80% probability and $20/month.
+- **A simple baseline is hard to beat on this dataset.** Tuned XGBoost and logistic regression reach the same AUC-ROC (0.85). XGBoost's advantage is higher precision (0.54 vs 0.50): it raises fewer false alarms at the same recall, which matters when each retention contact has a cost.
+- **Revenue prioritisation works.** Ranking customers by revenue at risk, the top 10% (140 customers) holds **26% of the total revenue at risk**. Within this group the actual churn rate is **60.7%**, against 26.5% overall.
+- **Month-to-month contracts are the dominant churn driver** (SHAP), followed by the share of lifetime spend that the current bill represents, monthly charges, lack of online security and fibre-optic internet.
 
-The framing is intentional: this is the kind of thinking that distinguishes a data scientist who understands business impact from one who optimises metrics in isolation.
+## Data
 
----
+[IBM Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn): 7,043 customers, 20 features, 26.5% churn rate.
 
-## Research Questions
+Blank `TotalCharges` values belong to 11 customers with zero tenure (new accounts with no completed billing cycle). They are set to 0, not dropped.
 
-1. **Which customer and contract characteristics are the strongest predictors of churn?** Across demographics, service subscriptions, billing type, and contract length, which features drive the classification most and in which direction?
-2. **How does a gradient-boosted model compare to a logistic regression baseline on an imbalanced binary target?** With a 26.5% churn rate, what does a meaningful gain in recall look like in practice, and what does it cost in false positives?
-3. **Can churn probability be combined with revenue data to produce an actionable prioritisation score?** Does re-ranking customers by expected revenue at risk change which accounts a retention team would contact first?
+## Exploratory findings
 
----
-
-## Dataset
-
-**Source:** [Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) on Kaggle (IBM sample dataset).
-
-The dataset contains 7,043 customer records across 20 features covering demographics, subscribed services, contract and billing details, and a binary churn label. It was chosen because its feature structure : contract type, payment method, tenure, monthly charges : maps directly onto the subscription dynamics of any recurring-revenue product, including the Microsoft 365 and Google One ecosystems. The known data quality issue (11 blank values in TotalCharges for customers with zero tenure) is documented and handled explicitly in preprocessing.
-
-| Feature group | Features |
+| Contract | Churn rate |
 |---|---|
-| Demographics | Gender, SeniorCitizen, Partner, Dependents |
-| Services | PhoneService, MultipleLines, InternetService, OnlineSecurity, OnlineBackup, DeviceProtection, TechSupport, StreamingTV, StreamingMovies |
-| Account | tenure, Contract, PaperlessBilling, PaymentMethod |
-| Billing | MonthlyCharges, TotalCharges |
-| Target | Churn (Yes / No) |
+| Month-to-month | 42.7% |
+| One year | 11.3% |
+| Two year | 2.8% |
 
-Overall churn rate: 26.5% (1,869 out of 7,043 customers). Moderately imbalanced : addressed through class weighting rather than resampling.
+- Customers in their first 12 months churn at 47.4%, against 9.5% for those with more than 4 years of tenure.
+- Electronic-check payers churn at 45.3%, versus 15-19% for the other payment methods.
+- Fibre-optic customers churn at 41.9%, versus 19.0% for DSL.
 
----
+![Distributions](images/eda_distributions.png)
+![Services and correlations](images/eda_services_corr.png)
 
-## Repository Structure
+## Feature engineering
 
-```
-subscription-churn-predictor/
-├── churn_analysis.py        # Full pipeline: EDA, feature engineering, modelling, SHAP, revenue scoring
-├── data/
-│   └── WA_Fn-UseC_-Telco-Customer-Churn.csv
-├── images/                      # Generated automatically on first run
-└── requirements.txt
-```
+- `tenure_group`: tenure binned into five lifecycle stages (used for EDA, not as a model input).
+- `num_services`: count of optional add-on services, a proxy for switching cost.
+- `monthly_to_total_ratio`: current monthly bill divided by lifetime spend. A high value means a recent customer with little billing history, so lower inertia.
 
----
+## Models
 
-## Tools
+**Model 1: Logistic Regression (baseline).** Standardised features, `class_weight='balanced'`.
 
-| Area | Stack |
+![Logistic regression](images/lr_results.png)
+
+**Model 2: XGBoost with grid search.** `scale_pos_weight` (≈2.77) handles the 73/27 class imbalance. A grid of 36 combinations was searched with stratified 5-fold cross-validation on the training set, optimising AUC-ROC:
+
+| Hyperparameter | Values searched |
 |---|---|
-| Language | Python 3.10+ |
-| Data manipulation | Pandas, NumPy |
-| Visualisation | Matplotlib, Seaborn |
-| Modelling | Scikit-learn, XGBoost |
-| Explainability | SHAP |
-| Environment | Jupyter Notebook |
+| `learning_rate` | 0.01, 0.1, 0.3 |
+| `max_depth` | 3, 5, 7 |
+| `n_estimators` | 100, 300 |
+| `subsample` | 0.8, 1.0 |
 
----
+Best combination: `learning_rate=0.01`, `max_depth=5`, `n_estimators=300`, `subsample=0.8` (cross-validated AUC-ROC 0.848).
 
-## Methodology
+![Model comparison](images/model_comparison.png)
 
-### Data Cleaning
-
-TotalCharges contains 11 blank string values corresponding to customers with zero tenure (new accounts with no billing history). These were converted to 0 rather than dropped or imputed with the column mean, since zero is the correct value: a customer who has never completed a billing cycle has zero total charges. Dropping these rows would silently remove new customers from the dataset and bias the tenure distribution.
-
-CustomerID was dropped before modelling as a row identifier with no predictive signal. SeniorCitizen was already encoded as a binary integer (0/1) and required no transformation. All remaining binary Yes/No columns were label-encoded. InternetService, Contract, and PaymentMethod : the three multi-class categorical features : were one-hot encoded. Class imbalance (26.5% churn) was addressed through class_weight='balanced' in Logistic Regression and scale_pos_weight in XGBoost, rather than SMOTE or other resampling. With a 26.5% minority class, synthetic oversampling introduces less value than proper class weighting and avoids the risk of generating implausible combinations of contract type, tenure, and billing values.
-
-### Feature Engineering
-
-**tenure_group:** Tenure in months (range: 0–72) was binned into five groups of roughly equal width: New (0–12), Developing (13–24), Established (25–36), Loyal (37–48), and Long-term (49–72). The raw numeric tenure was retained for the model alongside the grouped version. The grouping serves two purposes: it enables the EDA to show churn rates by customer lifecycle stage cleanly, and it gives the model a coarser representation that is less sensitive to month-to-month noise in the lower tenure range where churn is most volatile.
-
-**num_services:** A count of how many of the seven optional services each customer has subscribed to (OnlineSecurity, OnlineBackup, DeviceProtection, TechSupport, StreamingTV, StreamingMovies, MultipleLines). The hypothesis is that customers embedded in more services have a higher switching cost and lower churn propensity : a pattern common in bundled subscription products. This feature captures product stickiness as a single number, which the model can use directly rather than having to learn the relationship across seven binary columns independently.
-
-**monthly_to_total_ratio:** MonthlyCharges divided by TotalCharges, representing the share of the customer's total spend that their most recent bill represents. For long-tenure customers this ratio approaches zero; for new customers it approaches one. It is a proxy for tenure without being collinear with raw tenure, since it also captures billing history and is influenced by plan changes over time. Customers with a high ratio : whose recent bill is a large fraction of what they have ever paid : have had little time to build inertia with the service and are more likely to churn.
-
-### Model 1: Logistic Regression (Baseline)
-
-Logistic Regression provides a transparent, interpretable baseline. Its coefficients directly represent log-odds, making it possible to verify that the model has learned directionally sensible relationships before moving to a more complex approach (for example, confirming that month-to-month contracts increase churn log-odds relative to two-year contracts). Parameters: max_iter=1000, class_weight='balanced', random_state=42.
-
-The structural limitation here is the same as in any linear model applied to subscription data: the interaction between low tenure and month-to-month contract type is likely stronger than either variable independently, and a linear boundary cannot capture that interaction without an explicit interaction term.
-
-### Model 2: XGBoost with Grid Search
-
-XGBoost was chosen over Random Forest as the second model because gradient-boosted trees are the industry standard for tabular churn prediction and are explicitly optimised for the kind of moderate imbalance present here. They also generalise better than Random Forest on datasets of this size (roughly 5,600 training records) because they correct residuals iteratively rather than averaging independent trees, which tends to reduce variance more efficiently in lower-data regimes.
-
-A grid search was run over learning_rate (0.01, 0.1, 0.3), max_depth (3, 5, 7), n_estimators (100, 300), and subsample (0.8, 1.0), scored using 5-fold cross-validation on AUC-ROC. AUC-ROC was chosen as the optimisation target rather than F1 because it is threshold-independent: it measures the model's ability to rank churners above non-churners across all possible classification thresholds, which is exactly what the downstream revenue-weighted scoring step requires.
-
-**Why AUC-ROC and not accuracy or F1?** With 26.5% churn, accuracy is dominated by the majority class and rewards a model that is never bold enough to predict churn. F1 requires choosing a threshold before optimisation. AUC-ROC makes no threshold assumption and directly evaluates the quality of the probability scores the model outputs : which is what matters when the goal is to rank customers, not just classify them.
-
-### Revenue-Weighted Prioritisation Score
-
-After the final model produces a churn probability for each customer, a revenue at risk score is computed as:
+## Revenue at risk
 
 ```
 revenue_at_risk = churn_probability × MonthlyCharges
 ```
 
-This score re-ranks the customer list in a way that reflects business impact rather than model confidence. It answers the question a retention team actually faces: given a fixed number of outreach slots, which customers should we contact first? A customer with a 55% churn probability paying $95/month has a revenue at risk score of $52.25. A customer with a 90% churn probability paying $20/month has a score of $18.00. Pure churn probability would prioritise the second customer; revenue at risk correctly prioritises the first.
+A customer with an 80% churn probability paying 100 per month matters more than one with 90% probability paying 20. Customers are ranked by this score, and the top 10% form the intervention tier.
 
-The top 10% of customers ranked by revenue at risk are identified as the primary intervention tier: the accounts where a retention offer has the highest expected return.
+| | Value (test set) |
+|---|---|
+| Total monthly revenue at risk | 41,204 |
+| Top 10% tier (140 customers) | 10,795 (26.2% of total) |
+| Churn rate inside the top 10% tier | 60.7% (vs 26.5% overall) |
+| Monthly revenue actually lost in the tier | 7,823 |
 
----
+![Revenue at risk](images/revenue_at_risk.png)
 
-## Key Findings
+## Explainability (SHAP)
 
-| Metric | Logistic Regression | XGBoost (tuned) |
-|---|---|---|
-| Accuracy | 0.791 | 0.823 |
-| Precision (churn class) | 0.641 | 0.689 |
-| Recall (churn class) | 0.762 | 0.798 |
-| F1 (churn class) | 0.696 | 0.740 |
-| AUC-ROC | 0.848 | 0.887 |
+SHAP values show how much each feature pushed an individual prediction towards or away from churn. Top drivers by mean |SHAP|:
 
-XGBoost was selected as the final model. The gain in AUC-ROC (+0.039) reflects a meaningfully better probability ranking, which directly improves the quality of the revenue-weighted prioritisation step. In practical terms: for every 100 customers flagged for retention outreach, XGBoost correctly identifies roughly 8 more true churners than Logistic Regression.
+1. Month-to-month contract
+2. `monthly_to_total_ratio`
+3. Monthly charges
+4. Online security (customers without it churn more)
+5. Fibre-optic internet service
 
-**EDA findings that shaped the analysis:**
-
-- Month-to-month contracts have a churn rate of approximately 43%, compared to 11% for one-year and under 3% for two-year contracts. Contract type is the single strongest predictor in the dataset.
-- Electronic check payment is associated with a churn rate roughly double that of automatic bank transfer or credit card. This likely reflects lower switching friction: customers who pay manually have not committed to recurring payment infrastructure.
-- Fibre optic internet customers churn at a higher rate than DSL customers despite paying more, which points to a pricing or service satisfaction issue rather than a usage or engagement problem.
-- New customers (0–12 months tenure) churn at the highest rate by lifecycle stage. Churn risk drops sharply after the first year and continues to decline with tenure.
-- Customers subscribed to four or more services churn at materially lower rates, consistent with the switching cost hypothesis behind the num_services feature.
-
-**SHAP findings:**
-
-- Tenure is the single most important feature in the XGBoost model, with high tenure pushing strongly against churn across the entire customer base.
-- Contract type (month-to-month) is the most important categorical feature. Its SHAP contribution is directionally consistent across the test set: customers on monthly contracts always have their churn probability pushed upward.
-- num_services (the engineered stickiness count) ranks in the top five features, validating the hypothesis that product breadth reduces churn propensity. Customers with low num_services values have their churn probability pushed meaningfully upward.
-- MonthlyCharges shows a non-linear SHAP pattern: both very low and very high charges are associated with churn, but for different reasons. Very low charges suggest a minimal, easily cancelled subscription; very high charges create price sensitivity and dissatisfaction risk.
-- monthly_to_total_ratio ranks higher than raw TotalCharges in feature importance, confirming that the ratio captures information about customer inertia that raw billing totals do not.
-
-**Revenue prioritisation output:**
-
-The top 10% of customers ranked by revenue at risk account for a disproportionate share of total monthly revenue exposed to churn. Prioritising this tier over a pure probability ranking shifts outreach toward higher-value accounts and reduces the cost of false negatives where it matters most financially.
-
----
+![SHAP summary](images/shap_summary.png)
 
 ## Limitations
 
-- The dataset is a point-in-time snapshot with no temporal dimension. Real churn models use longitudinal data: sequences of monthly behaviour, engagement signals, and service usage trends. The absence of time-series features is the largest gap between this analysis and a production system.
-- TotalCharges is partially collinear with tenure and MonthlyCharges. The monthly_to_total_ratio engineered feature reduces but does not eliminate this redundancy.
-- The revenue-weighted prioritisation score assumes uniform profit margins across customers and ignores the cost of the retention offer itself. A full expected-value model would subtract the cost of the intervention and account for the probability that the customer would have stayed regardless.
-- The dataset contains no information on why customers churned: no customer service interactions, no competitor data, no satisfaction scores. SHAP identifies which features are associated with churn but cannot establish why those associations exist.
+- The data is a single static snapshot, so the model predicts who *looks like* past churners, not why customers leave.
+- The score uses monthly charges as a proxy for value. It ignores margins, customer lifetime value and the cost of the retention offer itself.
+- Class weighting means the predicted probabilities are not calibrated. Treat `revenue_at_risk` as a **ranking score**, not a literal revenue forecast.
+- Results come from one train/test split. Cross-validation was used only for tuning.
 
----
-
-## How to Run
+## How to run
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/mlamaralp/subscription-churn-predictor.git
 cd subscription-churn-predictor
-
-# 2. Install dependencies
 pip install -r requirements.txt
+```
 
-# 3. Download the dataset from Kaggle and place it in data/
-# https://www.kaggle.com/datasets/blastchar/telco-customer-churn
+1. Download the dataset from [Kaggle](https://www.kaggle.com/datasets/blastchar/telco-customer-churn).
+2. Save it as `data/WA_Fn-UseC_-Telco-Customer-Churn.csv`.
+3. Run:
 
-# 4. Run the analysis
+```bash
 python churn_analysis.py
 ```
 
----
+The script prints all metrics and saves the charts to `images/`. Each chart window must be closed for the script to continue. Grid search runs 180 model fits, so allow a few minutes.
 
-## References
+Requires Python 3.10+ with pandas, numpy, matplotlib, seaborn, scikit-learn, xgboost and shap. Results above were produced with xgboost 3.4.1, scikit-learn 1.9.1 and shap 0.53.0, and may vary slightly with other versions.
 
-- IBM (2019). Telco Customer Churn Sample Dataset. IBM Cognos Analytics.
-- Chen, T., & Guestrin, C. (2016). XGBoost: A Scalable Tree Boosting System. KDD 2016.
-- Lundberg, S. M., & Lee, S.-I. (2017). A Unified Approach to Interpreting Model Predictions. NeurIPS 2017.
-- Fawcett, T. (2006). An introduction to ROC analysis. Pattern Recognition Letters, 27(8), 861-874.
+## Repository structure
+
+```
+├── churn_analysis.py      # full analysis: EDA, features, models, revenue at risk, SHAP
+├── requirements.txt
+├── data/                  # place the Kaggle CSV here
+└── images/                # generated charts
+```

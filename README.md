@@ -157,8 +157,8 @@ The top 10% of customers ranked by revenue at risk account for a disproportionat
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/mlamaralp/subscription-churn.git
-cd subscription-churn
+git clone https://github.com/mlamaralp/subscription-churn-predictor.git
+cd subscription-churn-predictor
 
 # 2. Install dependencies
 pip install -r requirements.txt
@@ -166,8 +166,8 @@ pip install -r requirements.txt
 # 3. Download the dataset from Kaggle and place it in data/
 # https://www.kaggle.com/datasets/blastchar/telco-customer-churn
 
-# 4. Open the notebook
-jupyter notebook churn_analysis.ipynb
+# 4. Run the analysis
+python churn_analysis.py
 ```
 
 ---

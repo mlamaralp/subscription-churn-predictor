@@ -105,9 +105,7 @@ cd subscription-churn-predictor
 pip install -r requirements.txt
 ```
 
-1. Download the dataset from [Kaggle](https://www.kaggle.com/datasets/blastchar/telco-customer-churn).
-2. Save it as `data/WA_Fn-UseC_-Telco-Customer-Churn.csv`.
-3. Run:
+The dataset is already included in `data/WA_Fn-UseC_-Telco-Customer-Churn.csv` ([original source on Kaggle](https://www.kaggle.com/datasets/blastchar/telco-customer-churn)), so the script runs right after installing the requirements:
 
 ```bash
 python churn_analysis.py
@@ -122,6 +120,6 @@ Requires Python 3.10+ with pandas, numpy, matplotlib, seaborn, scikit-learn, xgb
 ```
 ├── churn_analysis.py      # full analysis: EDA, features, models, revenue at risk, SHAP
 ├── requirements.txt
-├── data/                  # place the Kaggle CSV here
+├── data/                  # Telco churn dataset (CSV)
 └── images/                # generated charts
 ```

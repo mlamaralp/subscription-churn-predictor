@@ -43,8 +43,8 @@ Overall churn rate: 26.5% (1,869 out of 7,043 customers). Moderately imbalanced 
 ## Repository Structure
 
 ```
-subscription-churn/
-├── churn_analysis.ipynb         # Full pipeline: EDA, feature engineering, modelling, SHAP, revenue scoring
+subscription-churn-predictor/
+├── churn_analysis.py        # Full pipeline: EDA, feature engineering, modelling, SHAP, revenue scoring
 ├── data/
 │   └── WA_Fn-UseC_-Telco-Customer-Churn.csv
 ├── images/                      # Generated automatically on first run

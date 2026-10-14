@@ -287,3 +287,163 @@ plt.show()
 print("Saved: images/lr_results.png")
 
 
+# ── Model 2 : XGBoost with Grid Search ────────────────────────────────────
+
+from xgboost import XGBClassifier
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+
+# Hyperparameter grid : 3 x 3 x 2 x 2 = 36 combinations, each tested with 5-fold CV
+param_grid = {
+    'learning_rate': [0.01, 0.1, 0.3],
+    'max_depth': [3, 5, 7],
+    'n_estimators': [100, 300],
+    'subsample': [0.8, 1.0]
+}
+
+xgb_base = XGBClassifier(
+    scale_pos_weight=scale_pos_weight,   # handles the 73/27 class imbalance
+    eval_metric='logloss',
+    random_state=42,
+    n_jobs=-1
+)
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+grid = GridSearchCV(
+    estimator=xgb_base,
+    param_grid=param_grid,
+    scoring='roc_auc',     # optimise AUC-ROC, as in the README
+    cv=cv,
+    n_jobs=-1,
+    verbose=1
+)
+grid.fit(X_train, y_train)
+
+print(f"\nBest parameters   : {grid.best_params_}")
+print(f"Best CV AUC-ROC   : {grid.best_score_:.4f}")
+
+xgb = grid.best_estimator_
+y_pred_xgb = xgb.predict(X_test)
+y_prob_xgb = xgb.predict_proba(X_test)[:, 1]
+
+print("\nXGBoost (tuned) : Classification Report")
+print(classification_report(y_test, y_pred_xgb, target_names=['Retained', 'Churned']))
+print(f"AUC-ROC : {roc_auc_score(y_test, y_prob_xgb):.4f}")
+
+# ── Model comparison : Logistic Regression vs XGBoost ─────────────────────
+
+def evaluate(name, y_true, y_pred, y_prob):
+    return {
+        'Model': name,
+        'Accuracy': accuracy_score(y_true, y_pred),
+        'Precision': precision_score(y_true, y_pred),
+        'Recall': recall_score(y_true, y_pred),
+        'F1': f1_score(y_true, y_pred),
+        'AUC-ROC': roc_auc_score(y_true, y_prob)
+    }
+
+comparison = pd.DataFrame([
+    evaluate('Logistic Regression', y_test, y_pred_lr, y_prob_lr),
+    evaluate('XGBoost (tuned)', y_test, y_pred_xgb, y_prob_xgb)
+]).set_index('Model').round(3)
+
+print("\nModel comparison on the test set:")
+print(comparison.to_string())
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+cm_xgb = confusion_matrix(y_test, y_pred_xgb)
+sns.heatmap(cm_xgb, annot=True, fmt='d', cmap='Greens', ax=axes[0],
+            xticklabels=['Retained', 'Churned'],
+            yticklabels=['Retained', 'Churned'],
+            annot_kws={'size': 13})
+axes[0].set_title('XGBoost : Confusion Matrix', fontweight='bold')
+axes[0].set_ylabel('Actual')
+axes[0].set_xlabel('Predicted')
+
+fpr_xgb, tpr_xgb, _ = roc_curve(y_test, y_prob_xgb)
+axes[1].plot(fpr_lr, tpr_lr, color='#4c72b0', lw=2,
+             label=f'Logistic Regression (AUC = {auc_lr:.3f})')
+axes[1].plot(fpr_xgb, tpr_xgb, color='#4caf7d', lw=2,
+             label=f"XGBoost (AUC = {roc_auc_score(y_test, y_prob_xgb):.3f})")
+axes[1].plot([0, 1], [0, 1], 'k--', lw=1)
+axes[1].set_xlim([0, 1])
+axes[1].set_ylim([0, 1.02])
+axes[1].set_xlabel('False Positive Rate')
+axes[1].set_ylabel('True Positive Rate')
+axes[1].set_title('ROC Curve : Model Comparison', fontweight='bold')
+axes[1].legend(loc='lower right')
+
+plt.tight_layout()
+plt.savefig('images/model_comparison.png', bbox_inches='tight')
+plt.show()
+print("Saved: images/model_comparison.png")
+
+# ── Revenue at risk : prioritising customers by financial impact ──────────
+
+# revenue_at_risk = churn probability x monthly bill
+# A customer with 80% churn risk paying $100/month matters more than
+# one with 90% churn risk paying $20/month.
+risk = X_test.copy()
+risk['churn_probability'] = y_prob_xgb
+risk['actual_churn'] = y_test.values
+risk['revenue_at_risk'] = risk['churn_probability'] * risk['MonthlyCharges']
+risk = risk.sort_values('revenue_at_risk', ascending=False).reset_index(drop=True)
+
+# Intervention tier : top 10% of customers by revenue at risk
+top_n = int(len(risk) * 0.10)
+top_tier = risk.head(top_n)
+
+total_rar = risk['revenue_at_risk'].sum()
+top_rar = top_tier['revenue_at_risk'].sum()
+
+print(f"\nTotal monthly revenue at risk (test set) : ${total_rar:,.0f}")
+print(f"Top 10% tier ({top_n} customers)           : ${top_rar:,.0f} "
+      f"({top_rar / total_rar:.1%} of total)")
+print(f"Churn rate inside the top 10% tier         : {top_tier['actual_churn'].mean():.1%} "
+      f"(vs {risk['actual_churn'].mean():.1%} overall)")
+print(f"Revenue actually lost in top 10% tier      : "
+      f"${top_tier.loc[top_tier['actual_churn'] == 1, 'MonthlyCharges'].sum():,.0f}/month")
+print("\nTop 10 customers by revenue at risk:")
+print(risk[['churn_probability', 'MonthlyCharges', 'revenue_at_risk',
+            'actual_churn']].head(10).round(2).to_string())
+
+fig, ax = plt.subplots(figsize=(9, 5))
+cum_share = risk['revenue_at_risk'].cumsum() / total_rar * 100
+pct_customers = (np.arange(1, len(risk) + 1) / len(risk)) * 100
+ax.plot(pct_customers, cum_share, color='#e05c5c', lw=2)
+ax.axvline(10, color='k', ls='--', lw=1)
+ax.set_xlabel('% of customers (ranked by revenue at risk)')
+ax.set_ylabel('% of total revenue at risk captured')
+ax.set_title('Revenue at Risk : Cumulative Capture Curve', fontweight='bold')
+ax.text(11, cum_share.iloc[top_n] - 8, f'Top 10% = {top_rar / total_rar:.0%} of revenue at risk',
+        fontsize=10)
+plt.tight_layout()
+plt.savefig('images/revenue_at_risk.png', bbox_inches='tight')
+plt.show()
+print("Saved: images/revenue_at_risk.png")
+
+# ── SHAP : explaining the XGBoost predictions ─────────────────────────────
+
+import shap
+
+explainer = shap.TreeExplainer(xgb)
+shap_values = explainer.shap_values(X_test)
+
+# Global view : which features matter most, and in which direction
+plt.figure()
+shap.summary_plot(shap_values, X_test, show=False, max_display=15)
+plt.title('SHAP Summary : Drivers of Churn Prediction', fontweight='bold')
+plt.tight_layout()
+plt.savefig('images/shap_summary.png', bbox_inches='tight')
+plt.show()
+print("Saved: images/shap_summary.png")
+
+# Ranking by mean absolute SHAP value
+shap_importance = (
+    pd.DataFrame({'feature': X_test.columns,
+                  'mean_abs_shap': np.abs(shap_values).mean(axis=0)})
+    .sort_values('mean_abs_shap', ascending=False)
+)
+print("\nTop 10 features by mean |SHAP|:")
+print(shap_importance.head(10).round(4).to_string(index=False))

@@ -330,26 +330,6 @@ print("\nXGBoost (tuned) : Classification Report")
 print(classification_report(y_test, y_pred_xgb, target_names=['Retained', 'Churned']))
 print(f"AUC-ROC : {roc_auc_score(y_test, y_prob_xgb):.4f}")
 
-# ── Model comparison : Logistic Regression vs XGBoost ─────────────────────
-
-def evaluate(name, y_true, y_pred, y_prob):
-    return {
-        'Model': name,
-        'Accuracy': accuracy_score(y_true, y_pred),
-        'Precision': precision_score(y_true, y_pred),
-        'Recall': recall_score(y_true, y_pred),
-        'F1': f1_score(y_true, y_pred),
-        'AUC-ROC': roc_auc_score(y_true, y_prob)
-    }
-
-comparison = pd.DataFrame([
-    evaluate('Logistic Regression', y_test, y_pred_lr, y_prob_lr),
-    evaluate('XGBoost (tuned)', y_test, y_pred_xgb, y_prob_xgb)
-]).set_index('Model').round(3)
-
-print("\nModel comparison on the test set:")
-print(comparison.to_string())
-
 fig, axes = plt.subplots(1, 2, figsize=(13, 5))
 
 cm_xgb = confusion_matrix(y_test, y_pred_xgb)
@@ -375,9 +355,57 @@ axes[1].set_title('ROC Curve : Model Comparison', fontweight='bold')
 axes[1].legend(loc='lower right')
 
 plt.tight_layout()
-plt.savefig('images/model_comparison.png', bbox_inches='tight')
+plt.savefig('images/xgb_results.png', bbox_inches='tight')
 plt.show()
-print("Saved: images/model_comparison.png")
+print("Saved: images/xgb_results.png")
+
+# ── Model comparison : Logistic Regression vs XGBoost ─────────────────────
+
+# 1. Compare evaluation metrics
+def evaluate(name, y_true, y_pred, y_prob):
+    return {
+        'Model': name,
+        'Accuracy': accuracy_score(y_true, y_pred),
+        'Precision': precision_score(y_true, y_pred),
+        'Recall': recall_score(y_true, y_pred),
+        'F1': f1_score(y_true, y_pred),
+        'AUC-ROC': roc_auc_score(y_true, y_prob)
+    }
+
+comparison = pd.DataFrame([
+    evaluate('Logistic Regression', y_test, y_pred_lr, y_prob_lr),
+    evaluate('XGBoost (tuned)', y_test, y_pred_xgb, y_prob_xgb)
+]).set_index('Model').round(3)
+
+print("\nModel comparison on the test set:")
+print(comparison.to_string())
+
+# 2. Comparative plots
+
+image_dir = "images"
+
+image_files = sorted(
+    os.path.join(image_dir, f)
+    for f in os.listdir(image_dir)
+    if f.lower().endswith((".png", ".jpg", ".jpeg"))
+)
+
+if not image_files:
+    raise FileNotFoundError(f"No plot images found in '{image_dir}'.")
+
+fig, axes = plt.subplots(
+    1, len(image_files),
+    figsize=(6 * len(image_files), 5),
+    squeeze=False
+)
+
+for ax, image_path in zip(axes[0], image_files):
+    ax.imshow(plt.imread(image_path))
+    ax.set_title(os.path.basename(image_path).rsplit(".", 1)[0])
+    ax.axis("off")
+
+plt.tight_layout()
+plt.show()
 
 # ── Revenue at risk : prioritising customers by financial impact ──────────
 

@@ -361,7 +361,7 @@ print("Saved: images/xgb_results.png")
 
 # ── Model comparison : Logistic Regression vs XGBoost ─────────────────────
 
-# 1. Compare evaluation metrics
+# Compare evaluation metrics
 def evaluate(name, y_true, y_pred, y_prob):
     return {
         'Model': name,
@@ -380,7 +380,7 @@ comparison = pd.DataFrame([
 print("\nModel comparison on the test set:")
 print(comparison.to_string())
 
-# 2. Comparative plots
+# Comparative plots
 
 image_dir = "images"
 
@@ -409,13 +409,25 @@ plt.show()
 
 # ── Revenue at risk : prioritising customers by financial impact ──────────
 
+# MonthlyCharges must contain the original monthly charge in dollars
+
+if 'MonthlyCharges' not in X_test.columns:
+    raise KeyError(
+        "'MonthlyCharges' is missing from X_test. "
+        "Use the original, unscaled monthly charges."
+    )
+
+if len(X_test) != len(y_prob_xgb) or len(X_test) != len(y_test):    
+    raise ValueError("X_test, y_prob_xgb and y_test must have the same length.")
+
 # revenue_at_risk = churn probability x monthly bill
-# A customer with 80% churn risk paying $100/month matters more than
-# one with 90% churn risk paying $20/month.
+# A customer with 80% churn risk paying $100/month matters more than one with 90% churn risk paying $20/month.
 risk = X_test.copy()
 risk['churn_probability'] = y_prob_xgb
 risk['actual_churn'] = y_test.values
-risk['revenue_at_risk'] = risk['churn_probability'] * risk['MonthlyCharges']
+risk['revenue_at_risk'] = (
+        risk['churn_probability'] * risk['MonthlyCharges']
+)
 risk = risk.sort_values('revenue_at_risk', ascending=False).reset_index(drop=True)
 
 # Intervention tier : top 10% of customers by revenue at risk
@@ -426,13 +438,18 @@ total_rar = risk['revenue_at_risk'].sum()
 top_rar = top_tier['revenue_at_risk'].sum()
 
 print(f"\nTotal monthly revenue at risk (test set) : ${total_rar:,.0f}")
+
 print(f"Top 10% tier ({top_n} customers)           : ${top_rar:,.0f} "
       f"({top_rar / total_rar:.1%} of total)")
+
 print(f"Churn rate inside the top 10% tier         : {top_tier['actual_churn'].mean():.1%} "
       f"(vs {risk['actual_churn'].mean():.1%} overall)")
-print(f"Revenue actually lost in top 10% tier      : "
+
+print(f"Monthly charges associated with actual churn in top 10% tier:  : "
       f"${top_tier.loc[top_tier['actual_churn'] == 1, 'MonthlyCharges'].sum():,.0f}/month")
+
 print("\nTop 10 customers by revenue at risk:")
+
 print(risk[['churn_probability', 'MonthlyCharges', 'revenue_at_risk',
             'actual_churn']].head(10).round(2).to_string())
 

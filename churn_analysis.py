@@ -359,27 +359,6 @@ plt.savefig('images/xgb_results.png', bbox_inches='tight')
 plt.show()
 print("Saved: images/xgb_results.png")
 
-# ── Model comparison : Logistic Regression vs XGBoost ─────────────────────
-
-# Compare evaluation metrics
-def evaluate(name, y_true, y_pred, y_prob):
-    return {
-        'Model': name,
-        'Accuracy': accuracy_score(y_true, y_pred),
-        'Precision': precision_score(y_true, y_pred),
-        'Recall': recall_score(y_true, y_pred),
-        'F1': f1_score(y_true, y_pred),
-        'AUC-ROC': roc_auc_score(y_true, y_prob)
-    }
-
-comparison = pd.DataFrame([
-    evaluate('Logistic Regression', y_test, y_pred_lr, y_prob_lr),
-    evaluate('XGBoost (tuned)', y_test, y_pred_xgb, y_prob_xgb)
-]).set_index('Model').round(3)
-
-print("\nModel comparison on the test set:")
-print(comparison.to_string())
-
 # ── Calibration check : are the predicted probabilities realistic? ────────
 
 # scale_pos_weight helps the model detect churners, but it inflates the predicted probabilities. This table compares what the model predicted with what actually happened, by probability band.

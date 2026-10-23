@@ -159,8 +159,6 @@ On the test set (1,409 customers), total monthly revenue at risk is $41,204. The
 
 ## Limitations
 
-## Limitations
-
 - XGBoost does not outperform the logistic regression baseline in AUC-ROC (0.847 vs 0.848). The tuned model is kept for its slightly higher precision (fewer false alarms at the same recall), not for better ranking.
 - Classification metrics use the default 0.5 threshold; a different threshold would trade precision against recall. Revenue at risk is computed on the 20% test set only, so the 26.2% figure carries sampling noise.
 - The dataset is a point-in-time snapshot with no temporal dimension. Real churn models use longitudinal data: sequences of monthly behaviour, engagement signals and service usage trends. The absence of time-series features is the largest gap between this analysis and a production system.

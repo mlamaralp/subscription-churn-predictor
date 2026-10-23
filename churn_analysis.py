@@ -407,6 +407,33 @@ for ax, image_path in zip(axes[0], image_files):
 plt.tight_layout()
 plt.show()
 
+# ── Calibration check : are the predicted probabilities realistic? ────────
+
+# scale_pos_weight helps the model detect churners, but it inflates the predicted probabilities. This table compares what the model predicted with what actually happened, by probability band.
+
+def calibration_table(y_true, y_prob):
+    bands = pd.cut(y_prob, [0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    return (pd.DataFrame({'prob': y_prob, 'churned': np.asarray(y_true), 'band': bands})
+            .groupby('band', observed=True)
+            .agg(customers=('churned', 'size'),
+                 predicted=('prob', 'mean'),
+                 actual=('churned', 'mean'))
+            .round(2))
+
+print(f"\nWeighted XGBoost : mean predicted churn = {y_prob_xgb.mean():.1%} "
+      f"vs actual churn rate = {y_test.mean():.1%}")
+print(calibration_table(y_test, y_prob_xgb).to_string())
+
+# Same tuned hyperparameters, but without class weights, for comparison
+xgb_unweighted = XGBClassifier(**{**grid.best_params_, 'eval_metric': 'logloss',
+                                  'random_state': 42, 'n_jobs': -1})
+xgb_unweighted.fit(X_train, y_train)
+y_prob_unw = xgb_unweighted.predict_proba(X_test)[:, 1]
+
+print(f"\nUnweighted XGBoost : AUC-ROC = {roc_auc_score(y_test, y_prob_unw):.4f}, "
+      f"mean predicted churn = {y_prob_unw.mean():.1%}")
+print(calibration_table(y_test, y_prob_unw).to_string())
+
 # ── Revenue at risk : prioritising customers by financial impact ──────────
 
 # MonthlyCharges must contain the original monthly charge in dollars

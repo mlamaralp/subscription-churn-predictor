@@ -159,11 +159,14 @@ On the test set (1,409 customers), total monthly revenue at risk is $41,204. The
 
 ## Limitations
 
-- XGBoost does not outperform the logistic regression baseline in AUC-ROC (0.847 vs 0.848). The tuned model is kept for explainability and slightly higher precision, not for better ranking.
+## Limitations
+
+- XGBoost does not outperform the logistic regression baseline in AUC-ROC (0.847 vs 0.848). The tuned model is kept for its slightly higher precision (fewer false alarms at the same recall), not for better ranking.
 - Classification metrics use the default 0.5 threshold; a different threshold would trade precision against recall. Revenue at risk is computed on the 20% test set only, so the 26.2% figure carries sampling noise.
-- The dataset is a point-in-time snapshot with no temporal dimension. Real churn models use longitudinal data: sequences of monthly behaviour, engagement signals, and service usage trends. The absence of time-series features is the largest gap between this analysis and a production system.
-- TotalCharges is partially collinear with tenure and MonthlyCharges. The monthly_to_total_ratio engineered feature reduces but does not eliminate this redundancy.
-- The revenue-weighted prioritisation score assumes uniform profit margins across customers and ignores the cost of the retention offer itself. A full expected-value model would subtract the cost of the intervention and account for the probability that the customer would have stayed regardless.
+- The dataset is a point-in-time snapshot with no temporal dimension. Real churn models use longitudinal data: sequences of monthly behaviour, engagement signals and service usage trends. The absence of time-series features is the largest gap between this analysis and a production system.
+- TotalCharges is strongly correlated with tenure (r = 0.83). This has little effect on tree-based predictions, but it can split SHAP attribution across correlated features and makes logistic-regression coefficients harder to interpret.
+- Class weighting (`scale_pos_weight`) inflates predicted probabilities: the model predicts an average churn probability of 40.7% against an actual rate of 26.5%. Revenue at risk is therefore a ranking score, not a forecast of lost revenue. The same model trained without class weights is well calibrated (26.6% predicted) with the same AUC-ROC (0.8465) and would be preferable if absolute values mattered.
+- The revenue-weighted prioritisation score uses monthly charges as a proxy for customer value. It assumes uniform profit margins and ignores customer lifetime value and the cost of the retention offer itself. A full expected-value model would subtract the cost of the intervention and account for the probability that the customer would have stayed regardless.
 - The dataset contains no information on why customers churned: no customer service interactions, no competitor data, no satisfaction scores. SHAP identifies which features are associated with churn but cannot establish why those associations exist.
 
 ---

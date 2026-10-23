@@ -380,33 +380,6 @@ comparison = pd.DataFrame([
 print("\nModel comparison on the test set:")
 print(comparison.to_string())
 
-# Comparative plots
-
-image_dir = "images"
-
-image_files = sorted(
-    os.path.join(image_dir, f)
-    for f in os.listdir(image_dir)
-    if f.lower().endswith((".png", ".jpg", ".jpeg"))
-)
-
-if not image_files:
-    raise FileNotFoundError(f"No plot images found in '{image_dir}'.")
-
-fig, axes = plt.subplots(
-    1, len(image_files),
-    figsize=(6 * len(image_files), 5),
-    squeeze=False
-)
-
-for ax, image_path in zip(axes[0], image_files):
-    ax.imshow(plt.imread(image_path))
-    ax.set_title(os.path.basename(image_path).rsplit(".", 1)[0])
-    ax.axis("off")
-
-plt.tight_layout()
-plt.show()
-
 # ── Calibration check : are the predicted probabilities realistic? ────────
 
 # scale_pos_weight helps the model detect churners, but it inflates the predicted probabilities. This table compares what the model predicted with what actually happened, by probability band.
